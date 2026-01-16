@@ -1,0 +1,73 @@
+name: monitor-cycle
+description: |
+  Single monitoring iteration: check PR status, fix issues if needed, sleep 30s.
+  Returns control to parent recipe for next iteration.
+
+context:
+  pr_number: ""
+  pr_url: ""
+  repo_flag: ""
+  attempt: 1
+  merged: false
+
+steps:
+  - id: check-pr-status
+    agent: inline
+    instruction: |
+      Check current PR status:
+      
+      ```bash
+      PR_DATA=$(gh pr view {{pr_number}} {{repo_flag}} --json state,statusCheckRollup,reviewDecision,mergeable,comments)
+      
+      echo "$PR_DATA" | jq .
+      
+      STATE=$(echo "$PR_DATA" | jq -r .state)
+      MERGEABLE=$(echo "$PR_DATA" | jq -r .mergeable)
+      REVIEW_DECISION=$(echo "$PR_DATA" | jq -r .reviewDecision)
+      
+      # Check if any status checks failed
+      FAILED_CHECKS=$(echo "$PR_DATA" | jq '[.statusCheckRollup[]? | select(.conclusion == "FAILURE")] | length')
+      
+      echo "State: $STATE"
+      echo "Mergeable: $MERGEABLE"
+      echo "Review: $REVIEW_DECISION"
+      echo "Failed checks: $FAILED_CHECKS"
+      ```
+      
+      Return JSON with status fields for next step to parse.
+    parse_json: true
+
+  - id: handle-status
+    agent: inline
+    instruction: |
+      Based on status from previous step:
+      
+      1. If state is MERGED:
+         - Set merged=true in context
+         - Exit with success (workflow complete)
+      
+      2. If state is CLOSED:
+         - Exit with error: PR was closed without merging
+      
+      3. If failed checks OR review decision is CHANGES_REQUESTED OR mergeable is CONFLICTING:
+         - Invoke fix-pr-issues recipe
+         - If fixes succeed, continue to sleep
+         - If fixes fail after 3 attempts, exit with error
+      
+      4. If all checks passing and approved and mergeable:
+         - If AUTO_MERGE_ENABLED: wait for GitHub to merge
+         - If not AUTO_MERGE_ENABLED: merge manually
+         - Then exit with success
+      
+      5. Otherwise (pending):
+         - Continue to sleep step
+
+  - id: sleep-before-next-check
+    agent: inline
+    instruction: |
+      Wait 30 seconds before next monitoring iteration:
+      
+      ```bash
+      echo "⏳ Waiting 30 seconds before next check... (attempt {{attempt}})"
+      sleep 30
+      ```

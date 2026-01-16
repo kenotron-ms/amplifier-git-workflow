@@ -1,0 +1,28 @@
+bundle:
+  name: git-workflow-behavior
+  version: 1.0.0
+  description: |
+    Git workflow automation behavior for PR submission and monitoring.
+    
+    External requirements (must be installed):
+    - gh CLI (https://cli.github.com)
+    - git
+    
+    Provides:
+    - Recipes for PR workflows (submit-pr, monitor-cycle, fix-pr-issues)
+    - Agents for PR validation and conflict resolution
+    - Documentation compliance checking
+
+tools:
+  - module: tool-recipes
+    source: git+https://github.com/microsoft/amplifier-bundle-recipes@main#subdirectory=modules/tool-recipes
+
+agents:
+  include:
+    - git-workflow:agents/pr-standards-checker.md
+    - git-workflow:agents/conflict-resolver.md
+    - git-workflow:agents/documentation-checker.md
+
+context:
+  include:
+    - git-workflow:context/instructions.md

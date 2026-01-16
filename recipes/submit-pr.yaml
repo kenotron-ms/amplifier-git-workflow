@@ -1,0 +1,245 @@
+name: submit-pr
+description: |
+  Autonomous PR submission workflow: validates changes, creates PR, monitors CI,
+  autonomously fixes issues, and merges when ready.
+
+context:
+  pr_number: ""
+  pr_url: ""
+  base_branch: ""
+  current_branch: ""
+  repo: ""
+  auto_merge_enabled: false
+
+stages:
+  - name: prepare
+    description: Validate git state and prepare for PR submission
+    steps:
+      - id: verify-tools
+        agent: inline
+        instruction: |
+          Verify required tools are available:
+          
+          1. Check for gh CLI:
+          ```bash
+          if ! command -v gh &> /dev/null; then
+            echo "❌ gh CLI not found"
+            echo "Install: brew install gh"
+            echo "Or visit: https://cli.github.com"
+            exit 1
+          fi
+          gh --version
+          ```
+          
+          2. Check for git:
+          ```bash
+          if ! command -v git &> /dev/null; then
+            echo "❌ git not found"
+            exit 1
+          fi
+          git --version
+          ```
+          
+          3. Check gh authentication:
+          ```bash
+          if ! gh auth status &> /dev/null; then
+            echo "❌ Not authenticated with GitHub"
+            echo "Run: gh auth login"
+            exit 1
+          fi
+          echo "✅ All tools available and authenticated"
+          ```
+
+      - id: check-pr-safety
+        agent: inline
+        instruction: |
+          Check for .git-pr-config.json to prevent accidental upstream PRs.
+          If found and jq is available, validate the target branch against rules.
+          See amp/plugins/git/commands/submit-pr.md Step 1 for full implementation.
+          
+          Store REPO_FLAG for use in gh commands.
+
+      - id: check-git-state
+        agent: inline
+        instruction: |
+          Check current git state:
+          
+          ```bash
+          git status
+          CURRENT_BRANCH=$(git branch --show-current)
+          echo "Current branch: $CURRENT_BRANCH"
+          
+          # Detect base branch (from config or default to main/master)
+          if [[ -f ".git-pr-config.json" ]] && command -v jq &> /dev/null; then
+            TARGET_BRANCH=$(jq -r '.remote.target_branch // empty' .git-pr-config.json)
+          fi
+          
+          if [[ -z "$TARGET_BRANCH" ]]; then
+            if git rev-parse --verify origin/main >/dev/null 2>&1; then
+              TARGET_BRANCH="main"
+            elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+              TARGET_BRANCH="master"
+            fi
+          fi
+          
+          echo "Target branch: $TARGET_BRANCH"
+          ```
+          
+          Store current_branch and base_branch in context.
+
+      - id: create-feature-branch
+        agent: inline
+        instruction: |
+          If currently on the target branch (main/master/develop), automatically
+          create a feature branch based on the changes.
+          
+          Analyze git diff to generate a descriptive branch name like:
+          - feature/add-user-auth
+          - fix/login-bug
+          - docs/update-readme
+          
+          Fallback to feature/YYYYMMDD-HHMMSS if can't determine from diff.
+
+      - id: commit-changes
+        agent: inline
+        instruction: |
+          If there are uncommitted changes:
+          
+          1. Show what will be committed:
+          ```bash
+          git diff --stat
+          git diff --staged --stat
+          ```
+          
+          2. Stage all changes:
+          ```bash
+          git add -A
+          ```
+          
+          3. Generate smart commit message by analyzing git diff
+          4. Create commit with conventional commit format
+
+      - id: merge-latest
+        agent: inline
+        instruction: |
+          Fetch and merge latest changes from base branch.
+          
+          If conflicts exist, delegate to git-workflow:conflict-resolver agent
+          with full conflict analysis (see amp submit-pr.md Step 4 for prompt).
+          
+          If agent reports REQUIRES_HUMAN_REVIEW, exit with error.
+          If agent reports COMPLETE, continue.
+
+  - name: compliance-and-standards
+    description: Ensure documentation compliance and discover PR standards (parallel)
+    steps:
+      - id: ensure-documentation-compliance
+        agent: git-workflow:documentation-checker
+        instruction: |
+          TASK: Ensure complete documentation compliance before PR submission
+          
+          Find repository documentation standards (CONTRIBUTING.md, MAINTENANCE.md, CLAUDE.md)
+          and ensure all required updates are made.
+          
+          See amp/plugins/git/commands/submit-pr.md Step 4 for full requirements.
+          
+          Return: COMPLIANCE STATUS (COMPLETE or FAILED)
+
+      - id: discover-pr-standards
+        agent: git-workflow:pr-standards-checker
+        instruction: |
+          TASK: Discover and analyze repository PR standards
+          
+          1. Read documentation standards files
+          2. Analyze recent merged PRs for patterns (gh pr list --state merged --limit 5)
+          3. Identify PR formatting patterns (title format, body structure)
+          4. Extract PR template if exists
+          
+          Return: PR STANDARDS DISCOVERY with recommended title and body format
+
+  - name: create-pr
+    description: Push branch and create pull request
+    steps:
+      - id: push-to-remote
+        agent: inline
+        instruction: |
+          Push current branch to origin:
+          
+          ```bash
+          git push -u origin $(git branch --show-current)
+          ```
+
+      - id: create-pull-request
+        agent: inline
+        instruction: |
+          Check if PR already exists for this branch.
+          
+          If not, create PR using standards discovered in previous stage:
+          
+          ```bash
+          gh pr create $REPO_FLAG --base "$BASE_BRANCH" --title "TITLE" --body "BODY"
+          
+          # Try to enable auto-merge
+          PR_NUMBER=$(gh pr view $REPO_FLAG --json number -q .number)
+          if gh pr merge "$PR_NUMBER" $REPO_FLAG --auto --merge 2>/dev/null; then
+            echo "✅ Auto-merge enabled"
+            export AUTO_MERGE_ENABLED=true
+          else
+            echo "⚠️  Auto-merge not available"
+            export AUTO_MERGE_ENABLED=false
+          fi
+          ```
+          
+          Store pr_number, pr_url, and auto_merge_enabled in context.
+
+  - name: monitor-to-merge
+    description: Monitor PR status until merged or issues detected
+    steps:
+      - id: monitor-loop
+        foreach:
+          # Create array [1, 2, 3, ..., 120] for max 1 hour monitoring
+          # Each iteration = 1 check + 30s sleep = ~1 minute
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          # ... extend to 120 for production
+          - 10  # Simplified for initial version
+        as: attempt
+        type: recipe
+        recipe: git-workflow:recipes/monitor-cycle.yaml
+        context:
+          pr_number: "{{pr_number}}"
+          pr_url: "{{pr_url}}"
+          repo_flag: "{{repo_flag}}"
+          attempt: "{{attempt}}"
+        parse_json: true
+
+  - name: finalize
+    description: Clean up after merge
+    steps:
+      - id: cleanup
+        agent: inline
+        instruction: |
+          After PR is merged, clean up local branches:
+          
+          1. Switch to base branch:
+          ```bash
+          git checkout {{base_branch}}
+          ```
+          
+          2. Pull latest changes:
+          ```bash
+          git pull origin {{base_branch}}
+          ```
+          
+          3. Delete feature branch:
+          ```bash
+          git branch -D {{current_branch}}
+          ```
+          
+          4. Report completion:
+          - PR URL: {{pr_url}}
+          - Merged successfully
+          - Back on {{base_branch}} with latest changes

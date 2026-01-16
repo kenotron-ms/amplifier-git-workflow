@@ -1,0 +1,96 @@
+name: fix-pr-issues
+description: |
+  Autonomously fix PR issues: download CI artifacts, analyze failures,
+  fix code, commit and push.
+
+context:
+  pr_number: ""
+  pr_url: ""
+  repo_flag: ""
+
+steps:
+  - id: analyze-failures
+    agent: inline
+    instruction: |
+      Identify what failed:
+      
+      1. Get failed check details:
+      ```bash
+      gh pr checks {{pr_number}} {{repo_flag}} --json name,conclusion,detailsUrl
+      ```
+      
+      2. Get review comments requesting changes:
+      ```bash
+      gh pr view {{pr_number}} {{repo_flag}} --json reviews
+      ```
+      
+      3. Check for merge conflicts:
+      ```bash
+      gh pr view {{pr_number}} {{repo_flag}} --json mergeable
+      ```
+      
+      Return JSON summary of issues.
+    parse_json: true
+
+  - id: download-ci-artifacts
+    agent: inline
+    instruction: |
+      CRITICAL: Download CI artifacts before attempting fixes.
+      
+      For each failed CI check:
+      
+      ```bash
+      # Get the run ID for the failed check
+      RUN_ID=$(gh run list --workflow="<workflow-name>" --limit 1 --json databaseId -q '.[0].databaseId')
+      
+      # Download all artifacts from the failed run
+      gh run download "$RUN_ID" --dir ci-artifacts/
+      
+      # List what was downloaded
+      find ci-artifacts/ -type f
+      ```
+      
+      Examine:
+      - Log files (complete error logs and stack traces)
+      - Test results (screenshots, videos, test output)
+      - Build artifacts (build logs, compilation errors)
+      - Coverage reports
+      - Error context files
+
+  - id: fix-issues
+    agent: git-workflow:conflict-resolver
+    instruction: |
+      TASK: Autonomously fix PR issues to enable merge
+      
+      DETECTED ISSUES:
+      {{issues_from_analyze_step}}
+      
+      CI ARTIFACTS DOWNLOADED:
+      {{artifacts_from_download_step}}
+      
+      YOUR MISSION:
+      
+      1. Analyze what failed using CI artifacts (not local assumptions)
+      2. Fix all issues automatically:
+         - For merge conflicts: Pull latest, resolve intelligently
+         - For CI failures: Fix based on actual CI logs/artifacts
+         - For review requests: Implement requested changes
+      3. Commit fixes with descriptive message
+      4. Push to origin
+      
+      See amp/plugins/git/commands/submit-pr.md Step 9a for full requirements.
+      
+      Return: FIX STATUS (COMPLETE or FAILED)
+
+  - id: verify-push
+    agent: inline
+    instruction: |
+      Verify fixes were pushed:
+      
+      ```bash
+      git log -1 --oneline
+      git status
+      ```
+      
+      If successful, return to monitoring loop.
+      If failed, report error.
