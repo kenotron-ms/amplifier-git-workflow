@@ -39,7 +39,7 @@ bundle:
 
 includes:
   - bundle: git+https://github.com/microsoft/amplifier-foundation@main
-  - bundle: git+https://github.com/your-org/amplifier-git-workflow@main#subdirectory=behaviors/git-workflow
+  - bundle: git+https://github.com/kenotron-ms/amplifier-git-workflow@v1.0.0#subdirectory=behaviors/git-workflow.yaml
 ---
 
 # Your Project Assistant
@@ -50,7 +50,7 @@ includes:
 ### Standalone Usage
 
 ```bash
-amplifier run --bundle git+https://github.com/your-org/amplifier-git-workflow@main \
+amplifier run --bundle git+https://github.com/kenotron-ms/amplifier-git-workflow@v1.0.0 \
   "Submit a PR for my changes"
 ```
 
