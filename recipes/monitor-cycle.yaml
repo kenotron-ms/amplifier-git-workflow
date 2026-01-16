@@ -13,7 +13,7 @@ context:
 steps:
   - id: check-pr-status
     agent: inline
-    instruction: |
+    prompt: |
       Check current PR status:
       
       ```bash
@@ -39,7 +39,7 @@ steps:
 
   - id: handle-status
     agent: inline
-    instruction: |
+    prompt: |
       Based on status from previous step:
       
       1. If state is MERGED:
@@ -64,7 +64,7 @@ steps:
 
   - id: sleep-before-next-check
     agent: inline
-    instruction: |
+    prompt: |
       Wait 30 seconds before next monitoring iteration:
       
       ```bash

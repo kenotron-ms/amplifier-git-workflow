@@ -17,7 +17,7 @@ stages:
     steps:
       - id: verify-tools
         agent: inline
-        instruction: |
+        prompt: |
           Verify required tools are available:
           
           1. Check for gh CLI:
@@ -52,7 +52,7 @@ stages:
 
       - id: check-pr-safety
         agent: inline
-        instruction: |
+        prompt: |
           Check for .git-pr-config.json to prevent accidental upstream PRs.
           If found and jq is available, validate the target branch against rules.
           See amp/plugins/git/commands/submit-pr.md Step 1 for full implementation.
@@ -61,7 +61,7 @@ stages:
 
       - id: check-git-state
         agent: inline
-        instruction: |
+        prompt: |
           Check current git state:
           
           ```bash
@@ -89,7 +89,7 @@ stages:
 
       - id: create-feature-branch
         agent: inline
-        instruction: |
+        prompt: |
           If currently on the target branch (main/master/develop), automatically
           create a feature branch based on the changes.
           
@@ -102,7 +102,7 @@ stages:
 
       - id: commit-changes
         agent: inline
-        instruction: |
+        prompt: |
           If there are uncommitted changes:
           
           1. Show what will be committed:
@@ -121,7 +121,7 @@ stages:
 
       - id: merge-latest
         agent: inline
-        instruction: |
+        prompt: |
           Fetch and merge latest changes from base branch.
           
           If conflicts exist, delegate to git-workflow:conflict-resolver agent
@@ -135,7 +135,7 @@ stages:
     steps:
       - id: ensure-documentation-compliance
         agent: git-workflow:documentation-checker
-        instruction: |
+        prompt: |
           TASK: Ensure complete documentation compliance before PR submission
           
           Find repository documentation standards (CONTRIBUTING.md, MAINTENANCE.md, CLAUDE.md)
@@ -147,7 +147,7 @@ stages:
 
       - id: discover-pr-standards
         agent: git-workflow:pr-standards-checker
-        instruction: |
+        prompt: |
           TASK: Discover and analyze repository PR standards
           
           1. Read documentation standards files
@@ -162,7 +162,7 @@ stages:
     steps:
       - id: push-to-remote
         agent: inline
-        instruction: |
+        prompt: |
           Push current branch to origin:
           
           ```bash
@@ -171,7 +171,7 @@ stages:
 
       - id: create-pull-request
         agent: inline
-        instruction: |
+        prompt: |
           Check if PR already exists for this branch.
           
           If not, create PR using standards discovered in previous stage:
@@ -221,7 +221,7 @@ stages:
     steps:
       - id: cleanup
         agent: inline
-        instruction: |
+        prompt: |
           After PR is merged, clean up local branches:
           
           1. Switch to base branch:

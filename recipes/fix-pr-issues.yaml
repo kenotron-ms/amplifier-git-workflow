@@ -11,7 +11,7 @@ context:
 steps:
   - id: analyze-failures
     agent: inline
-    instruction: |
+    prompt: |
       Identify what failed:
       
       1. Get failed check details:
@@ -34,7 +34,7 @@ steps:
 
   - id: download-ci-artifacts
     agent: inline
-    instruction: |
+    prompt: |
       CRITICAL: Download CI artifacts before attempting fixes.
       
       For each failed CI check:
@@ -59,7 +59,7 @@ steps:
 
   - id: fix-issues
     agent: git-workflow:conflict-resolver
-    instruction: |
+    prompt: |
       TASK: Autonomously fix PR issues to enable merge
       
       DETECTED ISSUES:
@@ -84,7 +84,7 @@ steps:
 
   - id: verify-push
     agent: inline
-    instruction: |
+    prompt: |
       Verify fixes were pushed:
       
       ```bash
